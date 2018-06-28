@@ -4,11 +4,32 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
+	"github.com/beevik/guid"
 	"github.com/miekg/dns"
 )
 
+func removeDuplicates(elements []string) []string {
+	result := []string{}
+
+	for i := 0; i < len(elements); i++ {
+		exists := false
+		for v := 0; v < i; v++ {
+			if elements[v] == elements[i] {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			result = append(result, elements[i])
+		}
+	}
+	return result
+}
+
 func dnsServe(addr, net string) {
+	log.Printf("Starting up DNS Server, LISTEN : %s(%s)", addr, net)
 	if err := newDnsServer(addr, net).ListenAndServe(); err != nil {
 		fmt.Printf("Failed to setup the %q server: %s\n", net, err.Error())
 	}
@@ -37,8 +58,26 @@ func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 	name := q.Name[0 : len(q.Name)-16]
 
-	lru.Put(name, host)
-	fmt.Println(host, name)
+	if len(name) <= 36 {
+		w.WriteMsg(m)
+		return
+	}
+	uuid := name[len(name)-36:]
+	if !guid.IsGuid(uuid) {
+		log.Printf("[ERROR] Token [%s] is not guid v4 format", uuid)
+		w.WriteMsg(m)
+		return
+	}
+	obj := lru.Get(uuid)
+	var hosts []string
+	if obj == nil {
+		hosts = append(hosts, host)
+	} else {
+		hosts = append(obj.([]string), host)
+	}
+	lru.Put(uuid, removeDuplicates(hosts))
+	csv.Write([]byte(fmt.Sprintf("%s,%s\n", time.Now().Format("2006-01-02"), host)))
+	//log.Printf("%s %s", host, q.Name)
 	/*
 		switch q.Qtype {
 

@@ -1,0 +1,5 @@
+*.exe
+dns.leak
+.sonarlint
+*.log
+*.csv
